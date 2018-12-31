@@ -1,13 +1,18 @@
 import logging
 import time
 import os
-import psutil
 import threading
 from queue import Queue
 import fusion_backend.module
 
 
-module_name = "Monitor"
+def get_module(report_queue: Queue, conf: dict):
+    try:
+        import psutil
+    except ModuleNotFoundError:
+        logging.error("failed to import module 'psutil', you may install it by 'pip3 install psutil'.")
+        return None
+    return Monitor(report_queue, conf)
 
 
 class Monitor(fusion_backend.module.Module):
@@ -18,7 +23,8 @@ class Monitor(fusion_backend.module.Module):
         super(Monitor, self).__init__(report_queue)
         self.__report_interval = conf['interval']
         self.__report_items = conf['items']
-        self.__job = threading.Timer(1, self.__do_report)
+        self.__job = threading.Timer(self.__report_interval, self.__do_report)
+        self.__job.setDaemon(True)
         self.__task = []
 
         for task in conf['items']:
@@ -35,7 +41,8 @@ class Monitor(fusion_backend.module.Module):
         pass
 
     def __do_report(self):
-        self.__job = threading.Timer(self.__report_interval, self.__do_report).start()
+        self.__job = threading.Timer(self.__report_interval, self.__do_report)
+        self.__job.start()
         result = {}
         for task in self.__task:
             result.update(task())
@@ -70,7 +77,12 @@ class Monitor(fusion_backend.module.Module):
 
     @staticmethod
     def load():
-        print(os.getloadavg())
+        load_info = os.getloadavg()
+        return {
+            'load1': load_info[0],
+            'load5': load_info[1],
+            'load15': load_info[2]
+        }
 
     @staticmethod
     def ram():
