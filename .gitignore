@@ -1,0 +1,4 @@
+.idea
+venv
+fusion_backend/__pycache__
+config.json
