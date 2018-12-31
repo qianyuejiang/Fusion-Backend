@@ -5,12 +5,9 @@ from queue import Queue
 
 class Module(metaclass=ABCMeta):
 
-    def __init__(self, report_queue: Queue):
+    def __init__(self, report_queue: Queue, module_name: str=None):
         self.__report_queue = report_queue
-
-    # @abstractmethod
-    # def report(self, conf: dict):
-    #     pass
+        self.__report_module_name = module_name
 
     # 用于更新的接口
     @abstractmethod
@@ -23,4 +20,13 @@ class Module(metaclass=ABCMeta):
         pass
 
     def report(self, data: dict):
-        self.__report_queue.put(data)
+        if self.__report_module_name is None:
+            report_data = {
+                self.__class__.__name__: data
+            }
+        else:
+            report_data = {
+                self.__report_module_name: data
+            }
+        # print(self.__class__.__name__)
+        self.__report_queue.put(report_data)

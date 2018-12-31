@@ -1,5 +1,5 @@
 import logging
-import sys
+import time
 import os
 import psutil
 import threading
@@ -7,9 +7,15 @@ from queue import Queue
 import fusion_backend.module
 
 
-class Module(fusion_backend.module.Module):
+module_name = "Monitor"
+
+
+class Monitor(fusion_backend.module.Module):
+    __last_update = 0
+    __last_network_info = None
+
     def __init__(self, report_queue: Queue, conf: dict):
-        super(Module, self).__init__(report_queue)
+        super(Monitor, self).__init__(report_queue)
         self.__report_interval = conf['interval']
         self.__report_items = conf['items']
         self.__job = threading.Timer(1, self.__do_report)
@@ -30,20 +36,17 @@ class Module(fusion_backend.module.Module):
 
     def __do_report(self):
         self.__job = threading.Timer(self.__report_interval, self.__do_report).start()
+        result = {}
         for task in self.__task:
-            task()
+            result.update(task())
+        self.report(result)
 
     def start(self):
         self.__job.start()
 
-import time
-class Monitor:
-    __last_update = 0
-    __last_network_info = None
-
     @staticmethod
     def cpu():
-        print("%.2f%%" % psutil.cpu_percent())
+        return {'cpu': psutil.cpu_percent()}
 
     @staticmethod
     def network():
@@ -63,7 +66,7 @@ class Monitor:
             }
         Monitor.__last_update = current_time
         Monitor.__last_network_info = network_snapshot
-        print(result)
+        return result
 
     @staticmethod
     def load():
@@ -71,4 +74,4 @@ class Monitor:
 
     @staticmethod
     def ram():
-        print(psutil.virtual_memory().percent)
+        return {'ram': psutil.virtual_memory().percent}
