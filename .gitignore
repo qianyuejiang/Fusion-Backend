@@ -1,4 +1,6 @@
 .idea
 venv
 fusion_backend/__pycache__
+fusion_backend\modules\__pycache__
 config.json
+*.pyc
