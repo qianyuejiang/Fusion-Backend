@@ -8,6 +8,7 @@ import fusion_backend.module
 
 def get_module(report_queue: Queue, conf: dict):
     try:
+        global psutil
         import psutil
     except ModuleNotFoundError:
         logging.error("failed to import module 'psutil', you may install it by 'pip3 install psutil'.")

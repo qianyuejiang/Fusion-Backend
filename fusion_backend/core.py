@@ -6,6 +6,8 @@ import requests
 import json
 from queue import Queue
 
+import client
+
 
 class Core:
 
@@ -13,9 +15,12 @@ class Core:
         self.__config_filename = config_filename
         self.__config_raw_json = None
         self.__module_queue = Queue()
+        self.__receive_queue = Queue()
         self.__report_thread = threading.Thread(target=self.__reporter)
+        self.__dispatch_thread = threading.Thread(target=self.__dispatch)
         self.__do_report = None
-        self.__module_list = []
+        self.__module_list = {}
+        self.__client_instance = None
 
     def get_config_filename(self):
         return self.__config_filename
@@ -32,6 +37,13 @@ class Core:
             logging.error("node id not set")
             exit(0)
 
+        # initialize client
+        self.__client_instance = getattr(client, '%sClient' % self.__config_raw_json['client_protocol'].upper())(
+            self.__receive_queue, self.__config_raw_json
+        )
+        self.__client_instance.start()
+
+        # initialize report method based on report protocol
         self.__do_report = getattr(self, "_%s_report" % self.__config_raw_json['controller_protocol'])
 
         if type(self.__config_raw_json['module']) is dict:
@@ -46,15 +58,18 @@ class Core:
                 if module is None:
                     logging.warning("failed to load '%s'" % module_name)
                 else:
-                    self.__module_list.append(module)
+                    self.__module_list[module.__class__.__name__] = module
 
     def run(self):
+        self.__dispatch_thread.setDaemon(True)
+        self.__dispatch_thread.start()
+
         # start reporter
         self.__report_thread.setDaemon(True)
         self.__report_thread.start()
 
-        for module in self.__module_list:
-            module.start()
+        for module_name in self.__module_list:
+            self.__module_list[module_name].start()
 
     def __reporter(self):
         while True:
@@ -90,3 +105,13 @@ class Core:
                 'node': self.__config_raw_json['node'],
                 'data': data
         }
+
+    def __dispatch(self):
+        while True:
+            data = self.__receive_queue.get()
+            for module_data in data:
+                module_name = list(module_data.keys())[0]
+                if module_name == 'Core':
+                    print("core update")
+                else:
+                    self.__module_list[module_name].update(module_data)
