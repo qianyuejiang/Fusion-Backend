@@ -13,8 +13,6 @@ import tornado.ioloop
 import tornado.gen
 from queue import Queue, Empty
 
-logging.basicConfig(level=logging.INFO)
-
 
 class Client(threading.Thread):
     def __init__(self, report_queue: Queue):
