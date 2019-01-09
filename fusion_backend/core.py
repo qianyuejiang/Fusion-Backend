@@ -110,8 +110,8 @@ class Core:
         while True:
             data = self.__receive_queue.get()
             for module_data in data:
-                module_name = list(module_data.keys())[0]
-                if module_name == 'Core':
+                module_name = list(module_data.keys())[0]  # module_data should only have
+                if module_name == 'Core':                  # one key which is the module name
                     print("core update")
                 else:
-                    self.__module_list[module_name].update(module_data)
+                    self.__module_list[module_name].update(module_data[module_name])
