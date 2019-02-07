@@ -1,16 +1,20 @@
 import logging
 import time
 import os
+import sys
 import threading
 from queue import Queue
 import fusion_backend.module
 
 
+try:
+    import psutil
+except ModuleNotFoundError:
+    pass
+
+
 def get_module(report_queue: Queue, conf: dict):
-    try:
-        global psutil
-        import psutil
-    except ModuleNotFoundError:
+    if "psutil" not in sys.modules:
         logging.error("failed to import module 'psutil', you may install it by 'pip3 install psutil'.")
         return None
     return Monitor(report_queue, conf)
