@@ -75,7 +75,8 @@ class HTTPHandler(tornado.web.RequestHandler):
 
     @tornado.gen.coroutine
     def get(self, *args, **kwargs):
-        self.write("<h1>It Works!</h1>")
+        self.write("<h1>Error 418 - I'm a Teapot</h1><p>You attempt to brew coffee with a teapot.</p>")
+        self.set_status(418, "I'm a teapot")
 
     @tornado.gen.coroutine
     def post(self, *args, **kwargs):

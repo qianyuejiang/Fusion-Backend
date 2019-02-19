@@ -1,0 +1,21 @@
+{
+  "controller": "http://your.domain.here/api/v1/node/",
+  "controller_port": 80,
+  "controller_protocol": "http",
+  "controller_key": "yourKeyHere",
+  "client":["0.0.0.0", "::"],
+  "client_port": 2333,
+  "client_protocol": "http",
+  "node": 1,
+  "module": {
+    "server-monitor": {
+      "items": ["cpu", "load", "ram", "network"],
+      "interval": 5
+    },
+    "shadowsocks": {
+      "manager_address": "127.0.0.1:7805"
+    },
+    "v2ray-vmess": {
+    }
+  }
+}
