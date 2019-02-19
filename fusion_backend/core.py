@@ -9,6 +9,9 @@ from queue import Queue
 import client
 
 
+_logger = logging.getLogger('Core')
+
+
 class Core:
 
     def __init__(self, config_filename="config.json"):
@@ -30,18 +33,20 @@ class Core:
             self.__config_raw_json = json.load(file_handle)
 
         if "controller" not in self.__config_raw_json:
-            logging.error("no controller address")
+            _logger.error("no controller address")
             exit(0)
 
         if "node" not in self.__config_raw_json:
-            logging.error("node id not set")
+            _logger.error("node id not set")
             exit(0)
 
+        _logger.debug("initializing client service...")
         # initialize client
         self.__client_instance = getattr(client, '%sClient' % self.__config_raw_json['client_protocol'].upper())(
             self.__receive_queue, self.__config_raw_json
         )
         self.__client_instance.start()
+        _logger.debug("client started with protocol '%s'" % self.__config_raw_json['client_protocol'].upper())
 
         # initialize report method based on report protocol
         self.__do_report = getattr(self, "_%s_report" % self.__config_raw_json['controller_protocol'])
@@ -52,13 +57,18 @@ class Core:
                 try:
                     module_meta = importlib.import_module(__package__+".modules."+module_name)
                 except ImportError:
-                    logging.warning("module '%s' not found." % module_name)
+                    _logger.warning("module '%s' not found." % module_name)
                     continue
                 module = getattr(module_meta, 'get_module')(self.__module_queue, module_config)
                 if module is None:
-                    logging.warning("failed to load '%s'" % module_name)
+                    _logger.warning("failed to load '%s'" % module_name)
                 else:
                     self.__module_list[module.__class__.__name__] = module
+                    _logger.info("module %s loaded" % module.__class__.__name__)
+            _logger.info("%d module(s) loaded" % len(self.__module_list))
+        else:
+            _logger.error("invalid module configuration")
+            exit(0)
 
     def run(self):
         self.__dispatch_thread.setDaemon(True)
