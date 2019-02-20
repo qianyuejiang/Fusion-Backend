@@ -92,25 +92,6 @@ class ShadowsocksManager(fusion_backend.module.Module):
         # start handling data transfer
         self.__worker_thread.start()
 
-        # self.__control_socket.send(b'add: {"server_port": 8001, "password":"7cd308cc059"}')
-
-        self.update([{
-            'action': 'add',
-            'conf': {
-                "server_port": 8001,
-                "password": "7cd308cc059",
-                "method": "aes-256-cfb"
-            }
-        }])
-        self.update([{
-            'action': 'add',
-            'conf': {
-                "server_port": 8002,
-                "password": "7cd308cc059",
-                "method": "aes-256-cfb"
-            }
-        }])
-
     def __worker(self):
         while True:
             rlist, wlist, elist = select.select([self.__control_socket], [self.__control_socket], [])
