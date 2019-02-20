@@ -5,7 +5,6 @@ import fusion_backend.module
 import threading
 import socket
 import time
-import ipaddress
 
 
 _logger = logging.getLogger('Relay')
@@ -16,12 +15,17 @@ def get_module(report_queue: Queue, conf: dict):
     return relay
 
 
+def _format_addr(addr):
+    return addr[0], addr[1]
+
+
 class Relay(fusion_backend.module.Module):
     def __init__(self, report_queue, conf):
         super(Relay, self).__init__(report_queue)
 
         _logger.debug("starting relay...")
 
+        self.__conf = conf
         self.__port_range = (int(conf['port_begin']), int(conf['port_end']))
         self.__selector = selectors.DefaultSelector()
 
@@ -29,17 +33,28 @@ class Relay(fusion_backend.module.Module):
 
         if conf['multiprocessing'] is False:
             # use multi thread instance
-            # self.__instance_obj = MultiThreadsRelay()
-            self.__instance_obj = MultiThreadUDPRelay()
-            self.__instance = threading.Thread(target=self.__instance_obj.run)
+            self.__instance_obj_list = {
+                'udp': MultiThreadUDPRelay(),
+                'tcp': MultiThreadsRelay()
+            }
+            self.__instance_list = {
+                'udp': threading.Thread(target=self.__instance_obj_list['udp'].run),
+                'tcp': threading.Thread(target=self.__instance_obj_list['tcp'].run)
+            }
         else:
-            self.__instance_obj = None
+            _logger.error("Multiple processes are not currently supported")
 
     def start(self):
+
+        for types in self.__conf['rules'].keys():
+            for destination_specifier in self.__conf['rules'][types].keys():
+                for relay_addr in self.__conf['relay_addr']:
+                    destination = self.__conf['rules'][types][destination_specifier]
+                    self.__instance_obj_list[types].add_relay(relay_addr, destination_specifier, destination)
+
+        for instance in self.__instance_list.values():
+            instance.start()
         _logger.info("relay started")
-        # self.__instance_obj.add_relay("127.0.0.1", 1024, "124.248.219.23", 3306)
-        self.__instance_obj.add_relay("127.0.0.1", 1024, "127.0.0.1", 50000)
-        self.__instance.start()
 
     def update(self, info: dict):
         pass
@@ -112,34 +127,48 @@ class MultiThreadUDPRelay(object):
         self._sock_to_destination = dict()
         self._session = UDPSession()
 
-    def add_relay(self, local, local_port, destination_ip, destination_port):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((local, local_port))
-        self._sock_to_destination[sock] = (destination_ip, destination_port)
+    def add_relay(self, local, local_port, destination: str):
+        try:
+            local_addrinfo = socket.getaddrinfo(local, local_port)[0]
+        except socket.gaierror as e:
+            _logger.warning("Invalid local address:'%s:%s'(%s)" % (local, local_port, str(e)))
+            return
+        ip, port = destination.rsplit(':')
+        try:
+            destination_addrinfo = socket.getaddrinfo(ip, port)[0]
+        except socket.gaierror as e:
+            _logger.warning("invalid destination address:'%s'(%s)" % (ip, str(e)))
+            return
+        _logger.info("Add UDP relay: %s:%d <=> %s:%d" % (_format_addr(local_addrinfo[4]) +
+                                                         _format_addr(destination_addrinfo[4])))
+        sock = socket.socket(local_addrinfo[0], socket.SOCK_DGRAM)
+        sock.bind(local_addrinfo[4])
+        self._sock_to_destination[sock] = destination_addrinfo
         self.__selector.register(sock, selectors.EVENT_READ, self._recv)
 
     def _recv(self, sock: socket.socket, mask):
-        # check if the session exist
         local_addr = sock.getsockname()
         data, addr = sock.recvfrom(65535)       # maximum udp packet size
         session = self._session.get_session((local_addr, addr))
         session: _SessionPeer
+        # check if the session exist
         if session is None:
             _logger.info("new session from [%s]:%d" % (addr[0], addr[1]))
             # session not exist, we should create a new relay session
-            destination_addr = self._sock_to_destination[sock]
-            relay_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            destination_addrinfo = self._sock_to_destination[sock]
+            relay_sock = socket.socket(destination_addrinfo[0], socket.SOCK_DGRAM)
             # send data to the destination at first,
             # so the system will automatically bind a address for that socket
-            relay_sock.sendto(data, destination_addr)
+            relay_sock.sendto(data, destination_addrinfo[4])
             relay_local_addr = relay_sock.getsockname()
-            session = self._session.create_session((local_addr, addr), sock, (relay_local_addr, destination_addr), relay_sock)
+            session = self._session.create_session((local_addr, addr), sock,
+                                                   (relay_local_addr, destination_addrinfo[4]), relay_sock)
             self.__selector.register(relay_sock, selectors.EVENT_READ, self._recv)
             _logger.info("udp session created: [%s]:%d,[%s]:%d <> [%s]:%d,[%s]:%d" %
                          (MultiThreadUDPRelay._format_addr(addr) +
                           MultiThreadUDPRelay._format_addr(local_addr) +
                           MultiThreadUDPRelay._format_addr(relay_local_addr) +
-                          MultiThreadUDPRelay._format_addr(destination_addr)))
+                          MultiThreadUDPRelay._format_addr(destination_addrinfo[4])))
         else:
             session.socket.sendto(data, session.address)
 
@@ -163,10 +192,6 @@ class MultiThreadUDPRelay(object):
             if expired_list:
                 self._clear(expired_list)
 
-    @staticmethod
-    def _format_addr(addr):
-        return addr[0], addr[1]
-
 
 class MultiThreadsRelay(object):
     def __init__(self):
@@ -175,27 +200,42 @@ class MultiThreadsRelay(object):
         self.__relay_table = dict()
         self.__send_buffer = dict()
 
-    def add_relay(self, local, local_port, destination_ip, destination_port):
-        _logger.info("new relay rule:[%s]:%d <=> [%s]:%d" % (local, local_port, destination_ip, destination_port))
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def add_relay(self, local, local_port, destination: str):
+        try:
+            local_addrinfo = socket.getaddrinfo(local, local_port)[0]
+        except socket.gaierror as e:
+            _logger.warning("Invalid local address:'%s:%s'(%s)" % (local, local_port, str(e)))
+            return
+        ip, port = destination.rsplit(':')
+        try:
+            destination_addrinfo = socket.getaddrinfo(ip, port)[0]
+        except socket.gaierror as e:
+            _logger.warning("invalid destination address:'%s'(%s)" % (ip, str(e)))
+            return
+
+        _logger.info("Add TCP relay:[%s]:%d <=> [%s]:%d" % (_format_addr(local_addrinfo[4]) +
+                                                            _format_addr(destination_addrinfo[4])))
+        # create local socket
+        sock = socket.socket(local_addrinfo[0], socket.SOCK_STREAM)
         sock.setblocking(False)
-        sock.bind((local, local_port))
+        sock.bind(local_addrinfo[4])
         sock.listen()
         self.__selector.register(sock, selectors.EVENT_READ, self._accept)
         # add sock into map
-        self.__sock_addr_map[sock] = (destination_ip, destination_port)
+        self.__sock_addr_map[sock] = destination_addrinfo
 
     def _accept(self, sock: socket.socket, mask):
         conn, addr = sock.accept()
 
         # create relay socket to destination
-        destination_sock = socket.create_connection(self.__sock_addr_map[sock])
+        destination_sock = socket.create_connection(self.__sock_addr_map[sock][4])
         destination_sock.setblocking(False)
         # add socket into relay table
         self.__relay_table[conn] = destination_sock
         self.__relay_table[destination_sock] = conn
 
-        _logger.info("create relay: [%s]:%d <=> [%s]:%d" % (addr + destination_sock.getpeername()))
+        _logger.info("create relay: [%s]:%d <=> [%s]:%d" % (_format_addr(addr) +
+                                                            _format_addr(destination_sock.getpeername())))
 
         # create send buffer
         self.__send_buffer[conn] = {
@@ -220,17 +260,17 @@ class MultiThreadsRelay(object):
         # socket may not exist in relay table
         if sock not in self.__relay_table:
             return
-        _logger.debug("read from sock ('%s':%d)" % sock.getsockname())
+        _logger.debug("read from sock ('%s':%d)" % _format_addr(sock.getsockname()))
         buffer = self.__send_buffer[self._peer(sock)]
         if buffer['buffer'] is None:
             try:
                 buffer['buffer'] = sock.recv(81920)
                 _logger.debug("actually read, length: %d" % len(buffer['buffer']))
             except ConnectionAbortedError:
-                _logger.info("connection abort while receiving from '%s':%d" % sock.getsockname())
+                _logger.info("connection abort while receiving from '%s':%d" % _format_addr(sock.getsockname()))
                 buffer['buffer'] = None
             except ConnectionResetError:
-                _logger.info("connection reset from '%s':%d" % sock.getsockname())
+                _logger.info("connection reset from '%s':%d" % _format_addr(sock.getsockname()))
                 buffer['buffer'] = None
             if not buffer['buffer']:
                 _logger.debug("connection closed.")
@@ -242,14 +282,16 @@ class MultiThreadsRelay(object):
         try:
             buffer['send_pos'] += self._peer(sock).send(buffer['buffer'][buffer['send_pos']:])
         except (ConnectionAbortedError, ConnectionResetError):
-            _logger.info("connection abort while sending to '%s':%d" % self.__relay_table[sock].getpeername())
+            _logger.info("connection abort while sending to '%s':%d" %
+                         _format_addr(self.__relay_table[sock].getpeername()))
             self._clear(sock)
             return
         except BlockingIOError:         # send buffer is full
-            buffer['send_pos'] = 0
+            buffer['send_pos'] = 0      # so the next time we write data to buffer from position 0
         if buffer['send_pos'] == len(buffer['buffer']):     # no more data in buffer
             buffer['buffer'] = None
-        else:                           # add write event on sock
+        else:
+            # handle writable event on socket, so we can write to the socket as fast as possible
             self.__selector.modify(self._peer(sock), selectors.EVENT_WRITE | selectors.EVENT_READ, self._relay_handle)
         self.__send_buffer[self._peer(sock)] = buffer
 
@@ -263,7 +305,7 @@ class MultiThreadsRelay(object):
         try:
             buffer['send_pos'] += sock.send(buffer['buffer'][buffer['send_pos']:])
         except (ConnectionAbortedError, ConnectionResetError):
-            _logger.info("connection abort while sending to '%s':%d" % sock.getpeername())
+            _logger.info("connection abort while sending to '%s':%d" % _format_addr(sock.getpeername()))
             self._clear(sock)
             return
         except BlockingIOError:         # send buffer is full
@@ -274,7 +316,8 @@ class MultiThreadsRelay(object):
         self.__send_buffer[sock] = buffer
 
     def _clear(self, sock):
-        _logger.info("shutdown relay: [%s]:%d <==> [%s]:%d" % (sock.getpeername() + self.__relay_table[sock].getpeername()))
+        _logger.info("shutdown relay: [%s]:%d <==> [%s]:%d" % (_format_addr(sock.getpeername()) +
+                                                               _format_addr(self.__relay_table[sock].getpeername())))
         # clear buffer first
         del self.__send_buffer[sock]
         del self.__send_buffer[self.__relay_table[sock]]
@@ -297,9 +340,7 @@ class MultiThreadsRelay(object):
     def run(self):
         _logger.debug("relay instance start")
         while True:
-            events = self.__selector.select(timeout=0.1)
-            if events is []:
-                print("empty???")
+            events = self.__selector.select()
             for key, mask in events:
                 key.data(key.fileobj, mask)
 
