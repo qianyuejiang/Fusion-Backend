@@ -7,38 +7,39 @@ The core of the backend is designed as a module loader. Its priority is to load 
 
 ## Fusion-API
 
-Fusion-API is an API using customized network protocal to enable a secure and efficient communication between backend and controller.
+Fusion-API is an API using customized network protocol to enable a secure and efficient communication between backend and controller.
 
 Fusion-API use json for data exchange, and can be transmit through HTTP protocol or raw TCP.
 
 The format of Fusion-API is listed below.
 
-``` json
+```text
 {
-    ModuleName1: {
-        // module defined format
-    },
-    ModuleName2: {
-        // module defined format
-    }...
+  ModuleName1: {
+    // module defined format
+  },
+  ModuleName2: {
+    // module defined format
+  }...
 }
 ```
 The Core of Fusion-Backend will not trying to parse the data inside module level, but to send the data dict to specified module directly.
 
 ## Modules
-Modules are where the services running. This includes but not limited to shadowsocks, v2ray, or any customized modules.
+Modules are which the services running on. This includes but not limits to shadowsocks, v2ray, or any customized modules.
 Please note that the Core **only** handles communications.
+
 ### Server Monitor
 
 You can use server-monitor module to monitor you node server.
 
 An example configuration is listed below.
 
-```
+```text
 "server-monitor": {
-      "items": ["cpu", "load", "ram", "network"],
-      "interval": 1
-    }
+  "items": ["cpu", "load", "ram", "network"],
+  "interval": 1
+}
 ```
 
 This module will report a group of server information you specified in `item` in a const interval, which you can set in `interval` in unit seconds.
@@ -58,7 +59,7 @@ The usage of cpu in percentage.
 
 The network activities information of node server.
 
-You will get `unlink` and `downlink` speed in `Byte/s` in report after you enable this item.
+You will get `uplink` and `downlink` speed in `Byte/s` in report after you enable this item.
 
 #### ram
 
@@ -78,14 +79,14 @@ This module only support shadowsocks-server in python version currently.
 
 To enable this module, simply add configuration below inside your module configuration.
 
-```
+```text
 "shadowsocks": {
-      "manager_address": "127.0.0.1:7805",
-      "server": "0.0.0.0"
-    }
+  "manager_address": "127.0.0.1:7805",
+  "server": "0.0.0.0"
+}
 ```
 
-As the module use shadowsocks multi-user management api to communicate with shadowsocks-server. You should setup a `management address` for socket communication use.
+As the module use shadowsocks multi-user management api to communicate with shadowsocks-server. You should setup a `manager_address` for socket communication use.
 
 Shadowsocks manager support two types of socket, the TCP socket and the Unix Domain Socket.
 
@@ -97,6 +98,6 @@ For security reasons, it is recommended to listen to **loop back address**(`127.
 
 Unix Domain Socket only works on \*nix system, but it has better performance in IPC.
 
-To use Unix Domain Socket, set `management_address` to a valid sock path.
+To use Unix Domain Socket, set `manager_address` to a valid sock path.
 
-For example, you can set `management_address` to `/tmp/run/shadowsocks-manager.sock` to use Unix Domain Socket in communication.
+For example, you can set `manager_address` to `/tmp/run/shadowsocks-manager.sock` to use Unix Domain Socket in communication.
