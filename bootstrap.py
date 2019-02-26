@@ -2,7 +2,7 @@ from fusion_backend.core import Core
 import time
 import logging
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 
 if __name__ == '__main__':
     # 加载配置文件
