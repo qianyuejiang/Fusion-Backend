@@ -35,7 +35,7 @@ You can use server-monitor module to monitor you node server.
 
 An example configuration is listed below.
 
-```text
+```json
 "server-monitor": {
   "items": ["cpu", "load", "ram", "network"],
   "interval": 1
@@ -79,7 +79,7 @@ This module only support shadowsocks-server in python version currently.
 
 To enable this module, simply add configuration below inside your module configuration.
 
-```text
+```json
 "shadowsocks": {
   "manager_address": "127.0.0.1:7805",
   "server": "0.0.0.0"
@@ -101,3 +101,36 @@ Unix Domain Socket only works on \*nix system, but it has better performance in 
 To use Unix Domain Socket, set `manager_address` to a valid sock path.
 
 For example, you can set `manager_address` to `/tmp/run/shadowsocks-manager.sock` to use Unix Domain Socket in communication.
+
+## Relay
+
+With this module, you can easily set up a dynamic **Forward Proxy** for node relay purpose.
+
+This module supports TCP forward based on port, and UDP forward based on UDP session.
+
+An example configuration is listed below.
+
+```json
+"relay": {
+  "port_begin": 2000,
+  "port_end": 2100,
+  "relay_addr": ["127.0.0.1", "::"],
+  "rules": {
+    "udp": {
+      "1234": "127.0.0.1:4567",
+      "1235": "127.0.0.1:2333"
+    }, "tcp": {
+      "1070": "127.0.0.1:1080"
+    }
+  },
+  "multiprocessing": false
+}
+```
+
+You can specify the port range in `port_begin` and `port_end`. When you create a proxy rule that has a source port out of the port range, the proxy rule would be ignored and a warning message would be logged.
+
+The `relay_addr` specified the source address for this module to bind with.
+
+The `rules` item specified the initial proxy rules applied to the module when start up.
+
+There are two sets of sub-rules that you can use in `rules` item. You can specify udp proxy rules in `udp` and TCP proxy rules in `tcp`, 
