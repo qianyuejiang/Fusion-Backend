@@ -6,3 +6,5 @@ fusion_backend\modules\__pycache__
 config.json
 *.pyc
 \.DS_Store
+
+\.vscode/
